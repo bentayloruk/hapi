@@ -109,21 +109,20 @@ let docAssembly args path =
     //Helper to make visit code cleaner.
     let visit (e:Element) = e.Accept(writer) |> ignore
 
-    //Document a type (struct, calss, enum, interface).
+    //Document a type (struct, class, enum, interface).
     let docType (td:TypeDeclaration) = 
 
         //Get the ids in this type declaration.
         let tdIds = 
             let memberIdMap = MemberIdMap()
-            //MethodInfo on TypeDeclaration is a Type.
+            //Info on TypeDeclaration is a Type.
             memberIdMap.Add(td.Info :?> Type)
             memberIdMap.Ids
 
         //Write the type dec members (if any).
         tdIds
         |> Seq.choose memberMap.TryFind
-        |> Seq.map (fun m -> m.Elements)
-        |> Seq.iter (fun elems -> elems |> Seq.iter visit)
+        |> Seq.iter (fun m -> m.Elements |> Seq.iter visit)
     
     //Document each type dec.
     members.Elements

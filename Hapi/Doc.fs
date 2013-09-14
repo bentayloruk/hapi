@@ -96,38 +96,39 @@ let docAssembly args path =
     let ass = Assembly.LoadFrom(path)
     let members = DocReader.Read(ass)
 
+    //Map all from id to member.
+    let memberMap = 
+        members.Elements
+        |> Seq.choose (|Member|_|)
+        |> Seq.map (fun m -> m.Id, m)
+        |> Map.ofSeq
+
+    //TODO take writer in args.
+    let writer = MarkdownWriter(args.Write, args.WriteLine)
+
+    //Helper to make visit code cleaner.
+    let visit (e:Element) = e.Accept(writer) |> ignore
+
     //Document a type (struct, calss, enum, interface).
     let docType (td:TypeDeclaration) = 
 
-        let maybeMember = 
-            let memberMap = 
-                members.Elements
-                |> Seq.choose (|Member|_|)
-                |> Seq.map (fun m -> m.Id, m)
-                |> Map.ofSeq
-            fun id -> memberMap.TryFind(id)
-
+        //Get the ids in this type declaration.
         let tdIds = 
             let memberIdMap = MemberIdMap()
             //MethodInfo on TypeDeclaration is a Type.
             memberIdMap.Add(td.Info :?> Type)
             memberIdMap.Ids
 
-        let writer = MarkdownWriter(args.Write, args.WriteLine) :> Visitor
-
-        let visit (e:Element) = e.Accept(writer) |> ignore
-
+        //Write the type dec members (if any).
         tdIds
-        |> Seq.choose maybeMember
+        |> Seq.choose memberMap.TryFind
         |> Seq.map (fun m -> m.Elements)
         |> Seq.iter (fun elems -> elems |> Seq.iter visit)
     
-    //Let's do this!
+    //Document each type dec.
     members.Elements
     |> Seq.choose (|TypeDeclaration|_|)
     |> Seq.iter docType
-
-
 
 
 (*

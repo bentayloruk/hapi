@@ -12,7 +12,17 @@ let main argv =
         @"..\..\..\Hapi.Example\bin\Debug\Hapi.Example.dll"
         ]
  
-    let docArgs = DocArgs.Console()
+    //let docArgs = DocArgs.Console()
+
+    use file =
+        let fileName = """c:\temp\doc.md"""
+        File.Delete(fileName)
+        File.CreateText(fileName)
+
+    let docArgs = {
+            Write = (fun text -> file.Write(text));
+            WriteLine = (fun line -> file.Write(line + Environment.NewLine))
+        }
 
     //Do the work.
     assemblies |> Seq.iter (Doc.docAssembly docArgs)
@@ -24,14 +34,3 @@ let main argv =
     0
 
 
-(*
-    use file =
-        let fileName = """c:\output.md"""
-        File.Delete(fileName)
-        File.CreateText(fileName)
-
-    let docArgs = {
-            Write = (fun text -> file.Write(text));
-            WriteLine = (fun line -> file.Write(line + Environment.NewLine))
-        }
-*)

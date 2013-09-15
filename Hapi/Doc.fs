@@ -15,33 +15,32 @@ type DocArgs =
 type private MarkdownWriter(write, writeLine) =
     inherit Visitor()
 
-    let writeBlankLine = writeLine ""
+    let writeBlankLine() = writeLine ""
 
     member __.NormalizeLink((cref:string)) =
         cref.Replace(":", "-").Replace("(", "-").Replace(")", "");
 
     override __.VisitMember(m) = 
-        writeLine (new string('-', 50))
-        writeLine ("# " + m.Id)
+        writeLine ("### " + m.Info.Name)
         base.VisitMember(m)
 
     override __.VisitSummary(summary) =
-        writeBlankLine
-        writeLine "## Summary"
+        writeLine (summary.ToText())
+        writeBlankLine()
         base.VisitSummary(summary)
 
     override __.VisitRemarks(remarks) =
-        writeBlankLine
+        writeBlankLine()
         writeLine "## Remarks"
         base.VisitRemarks(remarks)
 
     override __.VisitExample(example) =
-        writeBlankLine
+        writeBlankLine()
         writeLine "### Example"
         base.VisitExample(example)
 
     override __.VisitClass(c) =
-        writeLine (c.Info.Name.ToString())
+        writeLine <| sprintf "# %s" (c.Info.Name.ToString())
 
     override __.VisitC(code) =
         // Wrap inline code in ` according to Markdown syntax.
@@ -51,8 +50,8 @@ type private MarkdownWriter(write, writeLine) =
         base.VisitC(code)
 
     override __.VisitCode(code) =
-        writeBlankLine
-        writeBlankLine
+        writeBlankLine()
+        writeBlankLine()
 
         let writeCodeLine (line:string) = 
             // Indent code with 4 spaces according to Markdown syntax.
@@ -66,15 +65,15 @@ type private MarkdownWriter(write, writeLine) =
 
     override __.VisitText(text) =
         //Commented out as duping summary.
-        write(text.Content)
+        //write(text.Content)
         base.VisitText(text)
 
     override __.VisitPara(para) =
-        writeBlankLine
-        writeBlankLine
+        writeBlankLine()
+        writeBlankLine()
         base.VisitPara(para)
-        writeBlankLine
-        writeBlankLine
+        writeBlankLine()
+        writeBlankLine()
 
     override __.VisitSee(see) =
         let cref = __.NormalizeLink(see.Cref)
@@ -119,10 +118,28 @@ let docAssembly args path =
             memberIdMap.Add(td.Info :?> Type)
             memberIdMap.Ids
 
+        //Constructors, Properties, Methods, Operators, Extension Methods...
         //Write the type dec members (if any).
-        tdIds
-        |> Seq.choose memberMap.TryFind
-        |> Seq.iter (fun m -> m.Elements |> Seq.iter visit)
+        let memberTypeGroups =
+            tdIds
+            |> Seq.choose memberMap.TryFind
+            |> Seq.groupBy (fun m -> m.Info.MemberType)
+
+        //Note: Code below here is me printing something for now.  Should not be here. 
+
+        let memberTypeHeading =
+            function
+            | MemberTypes.Property -> "Properties"
+            | MemberTypes.NestedType-> "Nested Types"
+            | mt -> mt.ToString() + "s"
+
+        let printMemberGroup (mt,members) =
+            //TODO print the TypeInfo first without heading.
+            if mt <> MemberTypes.TypeInfo then
+                args.WriteLine (sprintf "## %s" <| memberTypeHeading mt)
+            members |> Seq.iter visit
+
+        memberTypeGroups |> Seq.iter printMemberGroup
     
     //Document each type dec.
     members.Elements

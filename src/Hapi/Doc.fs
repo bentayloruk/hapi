@@ -1,9 +1,11 @@
 ﻿module Doc
 open System
+open System.IO
 open System.Reflection
 open System
 open ClariusLabs.NuDoc 
 
+//Type containing the writers.
 type DocArgs =
     {
         Write : string -> unit
@@ -16,72 +18,55 @@ type private MarkdownWriter(write, writeLine) =
     inherit Visitor()
 
     let writeBlankLine() = writeLine ""
-
-    member __.NormalizeLink((cref:string)) =
+    let h1 text = writeLine ("# " + text)
+    let h2 text = writeLine ("## " + text)
+    let h3 text = writeLine ("### " + text)
+    let para text = writeLine (text + Environment.NewLine)//Second new line for para.
+    let inlineCode text = write "`"; write text; write "`"
+    let indentedCodeLine (line:string) = 
+        // Indent code with 4 spaces according to Markdown syntax.
+        write "    "
+        write line 
+    let makeLink((cref:string)) =
         cref.Replace(":", "-").Replace("(", "-").Replace(")", "");
 
     override __.VisitMember(m) = 
-        writeLine ("### " + m.Info.Name)
+        h3 m.Info.Name
         base.VisitMember(m)
 
     override __.VisitSummary(summary) =
-        writeLine (summary.ToText())
-        writeBlankLine()
-        base.VisitSummary(summary)
+        para (summary.ToText())
 
     override __.VisitRemarks(remarks) =
-        writeBlankLine()
-        writeLine "## Remarks"
         base.VisitRemarks(remarks)
 
     override __.VisitExample(example) =
-        writeBlankLine()
-        writeLine "### Example"
         base.VisitExample(example)
 
     override __.VisitClass(c) =
-        writeLine <| sprintf "# %s" (c.Info.Name.ToString())
+        h1 (c.Info.Name.ToString())
+        base.VisitClass(c)
 
-    override __.VisitC(code) =
-        // Wrap inline code in ` according to Markdown syntax.
-        writeLine " `"
-        write code.Content
-        write "` "
-        base.VisitC(code)
+    override __.VisitC(c) =
+        raise <| NotImplementedException()
+        base.VisitC(c)
 
     override __.VisitCode(code) =
-        writeBlankLine()
-        writeBlankLine()
-
-        let writeCodeLine (line:string) = 
-            // Indent code with 4 spaces according to Markdown syntax.
-            write "    "
-            writeLine line 
-
         code.Content.Split([| Environment.NewLine |], StringSplitOptions.None)
-        |> Array.iter writeCodeLine
-
+        |> Array.iter indentedCodeLine
         base.VisitCode(code)
 
-    override __.VisitText(text) =
-        //Commented out as duping summary.
-        //write(text.Content)
-        base.VisitText(text)
+    override __.VisitText(text) = base.VisitText(text)
 
-    override __.VisitPara(para) =
-        writeBlankLine()
-        writeBlankLine()
-        base.VisitPara(para)
-        writeBlankLine()
-        writeBlankLine()
+    override __.VisitPara(para) = base.VisitPara(para)
 
     override __.VisitSee(see) =
-        let cref = __.NormalizeLink(see.Cref)
-        Console.Write(" [{0}]({1}) ", cref.Substring(2), cref)
+        write (makeLink see.Cref)
+        base.VisitSee(see)
 
     override __.VisitSeeAlso(seeAlso) =
-        let cref = __.NormalizeLink(seeAlso.Cref)
-        writeLine (sprintf "[%s](%s)" (cref.Substring(2)) cref)
+        write (makeLink seeAlso.Cref)
+        base.VisitSeeAlso(seeAlso)
 
 //Active patterns for interesting types.
 let (|Member|_|) (m:Element) = match m with | :? Member as m -> Some(m) | _ -> None 
@@ -103,43 +88,39 @@ let docAssembly args path =
         |> Map.ofSeq
 
     //TODO take writer in args.
-    let writer = MarkdownWriter(args.Write, args.WriteLine)
+    let visitor = MarkdownWriter(args.Write, args.WriteLine)
 
     //Helper to make visit code cleaner.
-    let visit (e:Element) = e.Accept(writer) |> ignore
+    let visit (e:Element) = e.Accept(visitor) |> ignore
 
     //Document a type (struct, class, enum, interface).
     let docType (td:TypeDeclaration) = 
 
-        //Get the ids in this type declaration.
-        let tdIds = 
+        //Group ALA MSDN by Constructors, Properties, Methods, Operators, Extension Methods...
+        let memberGroups =
             let memberIdMap = MemberIdMap()
-            //Info on TypeDeclaration is a Type.
-            memberIdMap.Add(td.Info :?> Type)
+            memberIdMap.Add(td.Info :?> Type)//Always a Type for TD.
             memberIdMap.Ids
-
-        //Constructors, Properties, Methods, Operators, Extension Methods...
-        //Write the type dec members (if any).
-        let memberTypeGroups =
-            tdIds
             |> Seq.choose memberMap.TryFind
             |> Seq.groupBy (fun m -> m.Info.MemberType)
 
-        //Note: Code below here is me printing something for now.  Should not be here. 
-
-        let memberTypeHeading =
-            function
-            | MemberTypes.Property -> "Properties"
-            | MemberTypes.NestedType-> "Nested Types"
-            | mt -> mt.ToString() + "s"
-
+        //Helper to print a group.
         let printMemberGroup (mt,members) =
+
+            //Helper that makes member group headings.
+            let memberTypeHeading memberType =
+                match memberType with
+                | MemberTypes.Property -> "Properties"
+                | MemberTypes.NestedType-> "Nested Types"
+                | mt -> mt.ToString() + "s"
+
             //TODO print the TypeInfo first without heading.
             if mt <> MemberTypes.TypeInfo then
                 args.WriteLine (sprintf "## %s" <| memberTypeHeading mt)
             members |> Seq.iter visit
 
-        memberTypeGroups |> Seq.iter printMemberGroup
+        //Print all the groups!
+        memberGroups |> Seq.iter printMemberGroup
     
     //Document each type dec.
     members.Elements
